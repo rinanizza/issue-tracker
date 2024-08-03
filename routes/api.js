@@ -25,7 +25,7 @@ module.exports = function (app) {
     const project = await ProjectModel.findOne({ name: projectName }).exec();
 
     if (!project) {
-      return res.json([{ project: projectName, issues: [] }]);
+      return res.json({ project: projectName, issues: [] });
     }
 
     const query = {};
