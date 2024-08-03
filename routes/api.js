@@ -1,17 +1,16 @@
-'use strict';
-
-const mongoose = require('mongoose');
-const IssueModel = require('../models').Issue;
-const ProjectModel = require('../models').Project;
+"use strict";
+const mongoose = require("mongoose");
+const IssueModel = require("../models").Issue;
+const ProjectModel = require("../models").Project;
 const ObjectId = mongoose.Types.ObjectId;
 
 module.exports = function (app) {
-  app.route('/api/issues/:project')
-    
-    // Handle GET requests
-.get(async function (req, res) {
-  const projectName = req.params.project;
-  const { 
+  app
+    .route("/api/issues/:project")
+    .get(async function (req, res) {
+  let projectName = req.params.project;
+  //?open=true&assigned_to=Joe
+  const {
     _id,
     open,
     issue_title,
@@ -21,38 +20,49 @@ module.exports = function (app) {
     status_text,
   } = req.query;
 
+  const pipeline = [
+    { $match: { name: projectName } },
+    { $unwind: "$issues" },
+  ];
+
+  if (_id!= undefined) {
+    pipeline.push({ $match: { "issues._id": ObjectId(_id) } });
+  }
+  if (open!= undefined) {
+    pipeline.push({ $match: { "issues.open": open } });
+  }
+  if (issue_title!= undefined) {
+    pipeline.push({ $match: { "issues.issue_title": issue_title } });
+  }
+  if (issue_text!= undefined) {
+    pipeline.push({ $match: { "issues.issue_text": issue_text } });
+  }
+  if (created_by!= undefined) {
+    pipeline.push({ $match: { "issues.created_by": created_by } });
+  }
+  if (assigned_to!= undefined) {
+    pipeline.push({ $match: { "issues.assigned_to": assigned_to } });
+  }
+  if (status_text!= undefined) {
+    pipeline.push({ $match: { "issues.status_text": status_text } });
+  }
+
   try {
-    const project = await ProjectModel.findOne({ name: projectName }).exec();
-
-    if (!project) {
-      return res.json({ project: projectName, issues: [] });
+    const data = await ProjectModel.aggregate(pipeline).exec();
+    if (!data) {
+      res.json([]);
+    } else {
+      const mappedData = data.map((item) => item.issues);
+      res.json(mappedData);
     }
-
-    const query = {};
-    if (_id) query._id = ObjectId(_id);
-    if (open) query.open = open === 'true';
-    if (issue_title) query.issue_title = issue_title;
-    if (issue_text) query.issue_text = issue_text;
-    if (created_by) query.created_by = created_by;
-    if (assigned_to) query.assigned_to = assigned_to;
-    if (status_text) query.status_text = status_text;
-
-    const issues = project.issues.filter(issue => {
-      return Object.keys(query).every(key => {
-        if (key === '_id') return issue._id.toString() === query._id.toString();
-        return issue[key] === query[key];
-      });
-    });
-
-    res.json({ project: projectName, issues });
   } catch (err) {
-    res.status(500).json({ error: 'Error retrieving issues' });
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 })
 
-    // Handle POST requests
-    .post(async function (req, res) {
-      const projectName = req.params.project;
+    .post(function (req, res) {
+      let project = req.params.project;
       const {
         issue_title,
         issue_text,
@@ -60,129 +70,124 @@ module.exports = function (app) {
         assigned_to,
         status_text,
       } = req.body;
-
       if (!issue_title || !issue_text || !created_by) {
-        return res.json({ error: 'required field(s) missing' });
+        res.json({ error: "required field(s) missing" });
+        return;
       }
-
       const newIssue = new IssueModel({
-        issue_title,
-        issue_text,
+        issue_title: issue_title || "",
+        issue_text: issue_text || "",
         created_on: new Date(),
         updated_on: new Date(),
-        created_by,
-        assigned_to: assigned_to || '',
+        created_by: created_by || "",
+        assigned_to: assigned_to || "",
         open: true,
-        status_text: status_text || '',
+        status_text: status_text || "",
       });
-
-      try {
-        let project = await ProjectModel.findOne({ name: projectName }).exec();
-
-        if (!project) {
-          project = new ProjectModel({ name: projectName });
+      ProjectModel.findOne({ name: project }, (err, projectdata) => {
+        if (!projectdata) {
+          const newProject = new ProjectModel({ name: project });
+          newProject.issues.push(newIssue);
+          newProject.save((err, data) => {
+            if (err || !data) {
+              res.send("There was an error saving in post");
+            } else {
+              res.json(newIssue);
+            }
+          });
+        } else {
+          projectdata.issues.push(newIssue);
+          projectdata.save((err, data) => {
+            if (err || !data) {
+              res.send("There was an error saving in post");
+            } else {
+              res.json(newIssue);
+            }
+          });
         }
-
-        project.issues.push(newIssue);
-        await project.save();
-        res.json(newIssue);
-      } catch (err) {
-        res.status(500).json({ error: 'There was an error saving the issue' });
-      }
+      });
     })
-    
-   // Handle PUT requests
-.put(async function (req, res) {
-  const projectName = req.params.project;
-  const {
-    _id,
-    issue_title,
-    issue_text,
-    created_by,
-    assigned_to,
-    status_text,
-    open,
-  } = req.body;
 
-  if (!_id) {
-    return res.json({ error: 'missing _id' });
-  }
+    .put(function (req, res) {
+      let project = req.params.project;
+      const {
+        _id,
+        issue_title,
+        issue_text,
+        created_by,
+        assigned_to,
+        status_text,
+        open,
+      } = req.body;
+      if (!_id) {
+        res.json({ error: "missing _id" });
+        return;
+      }
+      if (
+        !issue_title &&
+        !issue_text &&
+        !created_by &&
+        !assigned_to &&
+        !status_text &&
+        !open
+      ) {
+        res.json({ error: "no update field(s) sent", _id: _id });
+        return;
+      }
 
-  if (
-    !issue_title &&
-    !issue_text &&
-    !created_by &&
-    !assigned_to &&
-    !status_text &&
-    open === undefined
-  ) {
-    return res.json({ error: 'no update field(s) sent', _id });
-  }
+      ProjectModel.findOne({ name: project }, (err, projectdata) => {
+        if (err || !projectdata) {
+          res.json({ error: "could not update", _id: _id });
+        } else {
+          const issueData = projectdata.issues.id(_id);
+          if (!issueData) {
+            res.json({ error: "could not update", _id: _id });
+            return;
+          }
+          issueData.issue_title = issue_title || issueData.issue_title;
+          issueData.issue_text = issue_text || issueData.issue_text;
+          issueData.created_by = created_by || issueData.created_by;
+          issueData.assigned_to = assigned_to || issueData.assigned_to;
+          issueData.status_text = status_text || issueData.status_text;
+          issueData.updated_on = new Date();
+          issueData.open = open;
+          projectdata.save((err, data) => {
+            if (err || !data) {
+              res.json({ error: "could not update", _id: _id });
+            } else {
+              res.json({ result: "successfully updated", _id: _id });
+            }
+          });
+        }
+      });
+    })
 
-  try {
-    let project = await ProjectModel.findOne({ name: projectName }).exec();
+    .delete(function (req, res) {
+      let project = req.params.project;
+      const { _id } = req.body;
+      if (!_id) {
+        res.json({ error: "missing _id" });
+        return;
+      }
+      ProjectModel.findOne({ name: project }, (err, projectdata) => {
+        if (!projectdata || err) {
+          res.send({ error: "could not delete", _id: _id });
+        } else {
+          const issueData = projectdata.issues.id(_id);
+          if (!issueData) {
+            res.send({ error: "could not delete", _id: _id });
+            return;
+          }
+          issueData.remove();
 
-    if (!project) {
-      return res.json({ error: 'could not update', _id });
-    }
-
-    const issue = project.issues.id(_id);
-
-    if (!issue) {
-      return res.json({ error: 'could not update', _id });
-    }
-
-    if (issue_title) issue.issue_title = issue_title;
-    if (issue_text) issue.issue_text = issue_text;
-    if (created_by) issue.created_by = created_by;
-    if (assigned_to) issue.assigned_to = assigned_to;
-    if (status_text) issue.status_text = status_text;
-    if (open !== undefined) issue.open = open === 'true';
-
-    issue.updated_on = new Date();
-    project.markModified('issues'); // Add this line to update the updated_on field
-    await project.save();
-    res.json({ result: 'successfully updated', _id });
-  } catch (err) {
-    res.json({ error: 'could not update', _id });
-  }
-})
-
-   // Handle DELETE requests
-app.delete('/api/issues/:projectName', async function (req, res) {
-  const { projectName } = req.params; // Correctly extract projectName from params
-  const { _id } = req.body;
-
-  if (!_id) {
-    return res.json({ error: 'missing _id' });
-  }
-
-  try {
-    // Find the project by name
-    let project = await ProjectModel.findOne({ name: projectName }).exec();
-
-    if (!project) {
-      return res.json({ error: 'could not delete', _id });
-    }
-
-    // Find the issue by _id in the project
-    const issueIndex = project.issues.findIndex(issue => issue._id.toString() === _id);
-
-    if (issueIndex === -1) {
-      return res.json({ error: 'could not delete', _id });
-    }
-
-    // Remove the issue
-    project.issues.pull({ _id });
-
-    // Save the updated project
-    await project.save();
-
-    // Send success response
-    res.json({ result: 'successfully deleted', _id });
-  } catch (err) {
-    // Handle errors and send appropriate response
-    res.json({ error: 'could not delete', _id });
-  }
-});
+          projectdata.save((err, data) => {
+            if (err || !data) {
+              res.json({ error: "could not delete", _id: issueData._id });
+            } else {
+              res.json({ result: "successfully deleted", _id: issueData._id });
+            }
+          });
+        }
+      });
+    });
 };
