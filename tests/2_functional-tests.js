@@ -211,9 +211,5 @@ let issueId;
       });
   });
   
-  // Add the `after` hook here
-  teardown(function() {
-  chai.request(server)
-    .get('/')
-});
+ 
 })

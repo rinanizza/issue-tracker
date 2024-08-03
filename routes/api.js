@@ -7,19 +7,9 @@ const ObjectId = mongoose.Types.ObjectId;
 
 module.exports = function (app) {
   app.route('/api/issues/:project')
-    
-    // Handle GET requests
     .get(async function (req, res) {
       const projectName = req.params.project;
-      const {
-        _id,
-        open,
-        issue_title,
-        issue_text,
-        created_by,
-        assigned_to,
-        status_text,
-      } = req.query;
+      const query = req.query;
 
       try {
         const project = await ProjectModel.findOne({ name: projectName }).exec();
@@ -28,34 +18,19 @@ module.exports = function (app) {
           return res.json({ project: projectName, issues: [] });
         }
 
-        let query = { $match: {} };
-        if (_id) query = { $match: { _id: ObjectId(_id) } };
-        if (open) query = { $match: { open: open === 'true' } };
-        if (issue_title) query = { $match: { issue_title } };
-        if (issue_text) query = { $match: { issue_text } };
-        if (created_by) query = { $match: { created_by } };
-        if (assigned_to) query = { $match: { assigned_to } };
-        if (status_text) query = { $match: { status_text } };
-
-        const issues = project.issues.filter(issue => {
-          return (
-            (!query.$match._id || issue._id.toString() === query.$match._id.toString()) &&
-            (!query.$match.open || issue.open === query.$match.open) &&
-            (!query.$match.issue_title || issue.issue_title === query.$match.issue_title) &&
-            (!query.$match.issue_text || issue.issue_text === query.$match.issue_text) &&
-            (!query.$match.created_by || issue.created_by === query.$match.created_by) &&
-            (!query.$match.assigned_to || issue.assigned_to === query.$match.assigned_to) &&
-            (!query.$match.status_text || issue.status_text === query.$match.status_text)
-          );
+        const filter = {};
+        Object.keys(query).forEach(key => {
+          filter[key] = query[key];
         });
+
+        const issues = await IssueModel.find(filter).exec();
 
         res.json({ project: projectName, issues });
       } catch (err) {
         res.status(500).json({ error: 'Error retrieving issues' });
       }
     })
-    
-    // Handle POST requests
+
     .post(async function (req, res) {
       const projectName = req.params.project;
       const {
@@ -95,19 +70,10 @@ module.exports = function (app) {
         res.status(500).json({ error: 'There was an error saving the issue' });
       }
     })
-    
-    // Handle PUT requests
+
     .put(async function (req, res) {
       const projectName = req.params.project;
-      const {
-        _id,
-        issue_title,
-        issue_text,
-        created_by,
-        assigned_to,
-        status_text,
-        open,
-      } = req.body;
+      const { _id, issue_title, issue_text, created_by, assigned_to, status_text, open } = req.body;
 
       if (!_id) {
         return res.json({ error: 'missing _id' });
@@ -137,13 +103,15 @@ module.exports = function (app) {
           return res.json({ error: 'could not update', _id });
         }
 
-        if (issue_title) issue.issue_title = issue_title;
-        if (issue_text) issue.issue_text = issue_text;
-        if (created_by) issue.created_by = created_by;
-        if (assigned_to) issue.assigned_to = assigned_to;
-        if (status_text) issue.status_text = status_text;
-        if (open !== undefined) issue.open = open === 'true';
+        const updateFields = {};
+        if (issue_title) updateFields.issue_title = issue_title;
+        if (issue_text) updateFields.issue_text = issue_text;
+        if (created_by) updateFields.created_by = created_by;
+        if (assigned_to) updateFields.assigned_to = assigned_to;
+        if (status_text) updateFields.status_text = status_text;
+        if (open !== undefined) updateFields.open = open === 'true';
 
+        issue.set(updateFields);
         issue.updated_on = new Date();
         await project.save();
         res.json({ result: 'successfully updated', _id });
@@ -151,42 +119,40 @@ module.exports = function (app) {
         res.json({ error: 'could not update', _id });
       }
     })
-    
-   // Handle DELETE requests
-app.delete('/api/issues/:projectName', async function (req, res) {
-  const { projectName } = req.params; // Correctly extract projectName from params
-  const { _id } = req.body;
 
-  if (!_id) {
-    return res.json({ error: 'missing _id' });
-  }
+    .delete(async function (req, res) {
+      const { projectName } = req.params; // Correctly extract projectName from params
+      const { _id } = req.body;
 
-  try {
-    // Find the project by name
-    let project = await ProjectModel.findOne({ name: projectName }).exec();
+      if (!_id) {
+        return res.json({ error: 'missing _id' });
+      }
 
-    if (!project) {
-      return res.json({ error: 'could not delete', _id });
-    }
+      try {
+        // Find the project by name
+        let project = await ProjectModel.findOne({ name: projectName }).exec();
 
-    // Find the issue by _id in the project
-    const issueIndex = project.issues.findIndex(issue => issue._id.toString() === _id);
+        if (!project) {
+          return res.json({ error: 'could not delete', _id });
+        }
 
-    if (issueIndex === -1) {
-      return res.json({ error: 'could not delete', _id });
-    }
+        // Find the issue by _id in the project
+        const issueIndex = project.issues.findIndex(issue => issue._id.toString() === _id);
 
-    // Remove the issue
-    project.issues.pull({ _id });
+        if (issueIndex === -1) {
+          return res.json({ error: 'could not delete', _id });
+        }
 
-    // Save the updated project
-    await project.save();
+        // Remove the issue
+        project.issues.pull({ _id });
 
-    // Send success response
-    res.json({ result: 'successfully deleted', _id });
-  } catch (err) {
-    // Handle errors and send appropriate response
-    res.json({ error: 'could not delete', _id });
-  }
-});
-};
+        // Save the updated project
+        await project.save();
+
+        // Send success response
+        res.json({ result: 'successfully deleted', _id });
+      } catch (err) {
+        // Handle errors and send appropriate response
+        res.json({ error: 'could not delete', _id });
+      }
+    });
