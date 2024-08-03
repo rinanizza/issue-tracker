@@ -9,52 +9,47 @@ module.exports = function (app) {
   app.route('/api/issues/:project')
     
     // Handle GET requests
-    .get(async function (req, res) {
-      const projectName = req.params.project;
-      const { 
-        _id,
-        open,
-        issue_title,
-        issue_text,
-        created_by,
-        assigned_to,
-        status_text,
-      } = req.query;
+.get(async function (req, res) {
+  const projectName = req.params.project;
+  const { 
+    _id,
+    open,
+    issue_title,
+    issue_text,
+    created_by,
+    assigned_to,
+    status_text,
+  } = req.query;
 
-      try {
-        const project = await ProjectModel.findOne({ name: projectName }).exec();
+  try {
+    const project = await ProjectModel.findOne({ name: projectName }).exec();
 
-        if (!project) {
-          return res.json({ project: projectName, issues: [] });
-        }
+    if (!project) {
+      return res.json({ project: projectName, issues: [] });
+    }
 
-        let query = { $match: {} };
-        if (_id) query = { $match: { _id: ObjectId(_id) } };
-        if (open) query = { $match: { open: open === 'true' } };
-        if (issue_title) query = { $match: { issue_title } };
-        if (issue_text) query = { $match: { issue_text } };
-        if (created_by) query = { $match: { created_by } };
-        if (assigned_to) query = { $match: { assigned_to } };
-        if (status_text) query = { $match: { status_text } };
+    const query = {};
+    if (_id) query._id = ObjectId(_id);
+    if (open) query.open = open === 'true';
+    if (issue_title) query.issue_title = issue_title;
+    if (issue_text) query.issue_text = issue_text;
+    if (created_by) query.created_by = created_by;
+    if (assigned_to) query.assigned_to = assigned_to;
+    if (status_text) query.status_text = status_text;
 
-        const issues = project.issues.filter(issue => {
-          return (
-            (!query.$match._id || issue._id.toString() === query.$match._id.toString()) &&
-            (!query.$match.open || issue.open === query.$match.open) &&
-            (!query.$match.issue_title || issue.issue_title === query.$match.issue_title) &&
-            (!query.$match.issue_text || issue.issue_text === query.$match.issue_text) &&
-            (!query.$match.created_by || issue.created_by === query.$match.created_by) &&
-            (!query.$match.assigned_to || issue.assigned_to === query.$match.assigned_to) &&
-            (!query.$match.status_text || issue.status_text === query.$match.status_text)
-          );
-        });
+    const issues = project.issues.filter(issue => {
+      return Object.keys(query).every(key => {
+        if (key === '_id') return issue._id.toString() === query._id.toString();
+        return issue[key] === query[key];
+      });
+    });
 
-        res.json({ project: projectName, issues });
-      } catch (err) {
-        res.status(500).json({ error: 'Error retrieving issues' });
-      }
-    })
-    
+    res.json({ project: projectName, issues });
+  } catch (err) {
+    res.status(500).json({ error: 'Error retrieving issues' });
+  }
+})
+
     // Handle POST requests
     .post(async function (req, res) {
       const projectName = req.params.project;
@@ -96,62 +91,63 @@ module.exports = function (app) {
       }
     })
     
-    // Handle PUT requests
-    .put(async function (req, res) {
-      const projectName = req.params.project;
-      const {
-        _id,
-        issue_title,
-        issue_text,
-        created_by,
-        assigned_to,
-        status_text,
-        open,
-      } = req.body;
+   // Handle PUT requests
+.put(async function (req, res) {
+  const projectName = req.params.project;
+  const {
+    _id,
+    issue_title,
+    issue_text,
+    created_by,
+    assigned_to,
+    status_text,
+    open,
+  } = req.body;
 
-      if (!_id) {
-        return res.json({ error: 'missing _id' });
-      }
+  if (!_id) {
+    return res.json({ error: 'missing _id' });
+  }
 
-      if (
-        !issue_title &&
-        !issue_text &&
-        !created_by &&
-        !assigned_to &&
-        !status_text &&
-        open === undefined
-      ) {
-        return res.json({ error: 'no update field(s) sent', _id });
-      }
+  if (
+    !issue_title &&
+    !issue_text &&
+    !created_by &&
+    !assigned_to &&
+    !status_text &&
+    open === undefined
+  ) {
+    return res.json({ error: 'no update field(s) sent', _id });
+  }
 
-      try {
-        let project = await ProjectModel.findOne({ name: projectName }).exec();
+  try {
+    let project = await ProjectModel.findOne({ name: projectName }).exec();
 
-        if (!project) {
-          return res.json({ error: 'could not update', _id });
-        }
+    if (!project) {
+      return res.json({ error: 'could not update', _id });
+    }
 
-        const issue = project.issues.id(_id);
+    const issue = project.issues.id(_id);
 
-        if (!issue) {
-          return res.json({ error: 'could not update', _id });
-        }
+    if (!issue) {
+      return res.json({ error: 'could not update', _id });
+    }
 
-        if (issue_title) issue.issue_title = issue_title;
-        if (issue_text) issue.issue_text = issue_text;
-        if (created_by) issue.created_by = created_by;
-        if (assigned_to) issue.assigned_to = assigned_to;
-        if (status_text) issue.status_text = status_text;
-        if (open !== undefined) issue.open = open === 'true';
+    if (issue_title) issue.issue_title = issue_title;
+    if (issue_text) issue.issue_text = issue_text;
+    if (created_by) issue.created_by = created_by;
+    if (assigned_to) issue.assigned_to = assigned_to;
+    if (status_text) issue.status_text = status_text;
+    if (open !== undefined) issue.open = open === 'true';
 
-        issue.updated_on = new Date();
-        await project.save();
-        res.json({ result: 'successfully updated', _id });
-      } catch (err) {
-        res.json({ error: 'could not update', _id });
-      }
-    })
-    
+    issue.updated_on = new Date();
+    project.markModified('issues'); // Add this line to update the updated_on field
+    await project.save();
+    res.json({ result: 'successfully updated', _id });
+  } catch (err) {
+    res.json({ error: 'could not update', _id });
+  }
+})
+
    // Handle DELETE requests
 app.delete('/api/issues/:projectName', async function (req, res) {
   const { projectName } = req.params; // Correctly extract projectName from params
