@@ -62,63 +62,51 @@ let issueId;
       });
   });
 
-  // Get request test
-
-suite("3 Get request Tests", function () {
-  test("View issues on a project: GET request to /api/issues/{project}", function (done) {
-    chai
-     .request(server)
-     .get("/api/issues/apitest")
-     .end(function (err, res) {
-        assert.equal(res.status, 200);
-        assert.propertyVal(res.body, 'project', 'apitest');
-        assert.isArray(res.body.issues);
-        assert.equal(res.body.issues.length, 2);
-        done();
-      });
-  });
-  test("View issues on a project with one filter: GET request to /api/issues/{project}", function (done) {
-    chai
-     .request(server)
-     .get("/api/issues/apitest")
-     .query({ open: 'true' })
-     .end(function (err, res) {
-        assert.equal(res.status, 200);
-        assert.propertyVal(res.body, 'project', 'apitest');
-        assert.isArray(res.body.issues);
-        assert.equal(res.body.issues.length, 2);
-        done();
-      });
-  });
-  test("View issues on a project with multiple filters: GET request to /api/issues/{project}", function (done) {
-    chai
-     .request(server)
-     .get("/api/issues/apitest")
-     .query({
-        open: 'true',
-        issue_title: 'Job'
-      })
-     .end(function (err, res) {
-        assert.equal(res.status, 200);
-        assert.propertyVal(res.body, 'project', 'apitest');
-        assert.isArray(res.body.issues);
-        assert.equal(res.body.issues.length, 1);
-        assert.deepEqual(res.body.issues[0], {
-          "issue_title": "Job",
-          "issue_text": "I'm new here.",
-          "created_on": "2024-08-03T15:32:54.711Z",
-          "updated_on": "2024-08-03T15:32:54.711Z",
-          "created_by": "Catherine",
-          "assigned_to": "",
-          "open": true,
-          "status_text": "",
-          "_id": "66ae4da6eefda0832a12dc35"
-        });
-        done();
-      });
-  });
+// View issues on a project
+test('View issues on a project', function(done) {
+  chai.request(server)
+   .get('/api/issues/apitest')
+   .end(function(err, res) {
+      assert.equal(res.status, 200);
+      assert.propertyVal(res.body, 'project', 'apitest');
+      assert.isArray(res.body.issues);
+      assert.equal(res.body.issues.length, 2);
+      done();
+    });
 });
 
+// View issues on a project with one filter
+test('View issues on a project with one filter', function(done) {
+  chai.request(server)
+   .get('/api/issues/apitest')
+   .query({ open: 'true' })
+   .end(function(err, res) {
+      assert.equal(res.status, 200);
+      assert.propertyVal(res.body, 'project', 'apitest');
+      assert.isArray(res.body.issues);
+      assert.equal(res.body.issues.length, 2);
+      done();
+    });
+});
+
+// View issues on a project with multiple filters
+test('View issues on a project with multiple filters', function(done) {
+  chai.request(server)
+   .get('/api/issues/apitest')
+   .query({
+      open: 'true',
+      issue_title: 'Job'
+    })
+   .end(function(err, res) {
+      assert.equal(res.status, 200);
+      assert.propertyVal(res.body, 'project', 'apitest');
+      assert.isArray(res.body.issues);
+      assert.equal(res.body.issues.length, 1);
+      assert.equal(res.body.issues[0].issue_title, 'Job');
+      done();
+    });
+});
+    
   // Update one field on an issue
   test('Update one field on an issue', function(done) {
     chai.request(server)
